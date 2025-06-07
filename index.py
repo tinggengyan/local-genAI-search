@@ -3,7 +3,7 @@ from os import listdir
 from os.path import isfile, join,isdir
 
 import torch
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import Qdrant
 import sys
 from langchain_text_splitters import TokenTextSplitter
@@ -12,17 +12,13 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 import docx
 import os
+from environment_var import qdrant_url, qdrant_api_key, model_name, collection_name
 
 def get_files(dir):
     file_list = []
     for dir, _, filenames in os.walk(dir):
         for f in filenames:
             file_list.append(os.path.join(dir, f))
-    # for f in listdir(dir):
-    #     if isfile(join(dir,f)):
-    #         file_list.append(join(dir,f))
-    #     elif isdir(join(dir,f)):
-    #         file_list= file_list + get_files(join(dir,f))
     return file_list
 
 def getTextFromWord(filename):
@@ -37,12 +33,21 @@ def getTextFromPPTX(filename):
     fullText = []
     for slide in prs.slides:
         for shape in slide.shapes:
-            fullText.append(shape.text)
+            try:
+                if hasattr(shape, "text"):
+                    text = shape.text.strip()
+                    if text:  # 只添加非空文本
+                        fullText.append(text)
+            except AttributeError:
+                # 跳过没有 text 属性的形状（如图片）
+                continue
+            except Exception as e:
+                print(f"Warning: Error processing shape in {filename}: {str(e)}")
+                continue
     return '\n'.join(fullText)
 
 def main_indexing(mypath):
-    #model_name = "amberoad/bert-multilingual-passage-reranking-msmarco"
-    model_name = "sentence-transformers/msmarco-bert-base-dot-v5"
+    # 使用 environment_var.py 中定义的模型
     if torch.cuda.is_available():
         model_kwargs = {'device': 'cuda'}
     elif torch.backends.mps.is_available():
@@ -55,50 +60,79 @@ def main_indexing(mypath):
         model_kwargs=model_kwargs,
         encode_kwargs=encode_kwargs
     )
-    client = QdrantClient(path="qdrant/")
-    collection_name = "MyCollection"
+    client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
     if client.collection_exists(collection_name):
         client.delete_collection(collection_name)
 
-    client.create_collection(collection_name,vectors_config=VectorParams(size=768, distance=Distance.DOT))
+    # 使用 512 维向量，因为 bge-small-zh-v1.5 模型生成的是 512 维向量
+    client.create_collection(collection_name,vectors_config=VectorParams(size=512, distance=Distance.DOT))
     qdrant = Qdrant(client, collection_name, hf)
     print("Indexing...")
     onlyfiles = get_files(mypath)
-    file_content = ""
     for file in onlyfiles:
-        file_content = ""
-        if file.find("~") > 0:  # added by pdchristian to catch files with "~" in file name
-            file_content = "Empty due to ~ in file name."  # added by pdchristian to catch files with "~" in file name
-            print("Document title with ~: " + file)
-        elif file.endswith(".pdf"):
-            try:
-                print("indexing "+file)
-                reader = PyPDF2.PdfReader(file)
-                for i in range(0,len(reader.pages)):
-                    file_content = file_content + " "+reader.pages[i].extract_text()
-            except Exception as exc:# added by pdchristian to catch decryption error
-                file_content = "Empty due to extraction error."  # added by pdchristian to catch decryption error
-        elif file.endswith(".txt") or file.endswith(".md") or file.endswith(".markdown"):
-            print("indexing " + file)
-            f = open(file,'r',encoding='utf-8',errors='ignore')
-            file_content = f.read()
-            f.close()
-        elif file.endswith(".docx"):
-            print("indexing " + file)
-            file_content = getTextFromWord(file)
-        elif file.endswith(".pptx"):
-            print("indexing " + file)
-            file_content = getTextFromPPTX(file)
-        else:
+        try:
+            file_content = ""
+            if file.find("~") > 0:  # 跳过临时文件
+                print(f"Skipping temporary file: {file}")
+                continue
+            elif file.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp')):
+                print(f"Skipping image file: {file}")
+                continue
+            elif file.endswith(".pdf"):
+                try:
+                    print("indexing "+file)
+                    reader = PyPDF2.PdfReader(file)
+                    for i in range(0,len(reader.pages)):
+                        file_content = file_content + " "+reader.pages[i].extract_text()
+                except Exception as exc:
+                    print(f"Error processing PDF {file}: {str(exc)}")
+                    continue
+            elif file.endswith(".txt") or file.endswith(".md") or file.endswith(".markdown"):
+                try:
+                    print("indexing " + file)
+                    f = open(file,'r',encoding='utf-8',errors='ignore')
+                    file_content = f.read()
+                    f.close()
+                except Exception as exc:
+                    print(f"Error processing text file {file}: {str(exc)}")
+                    continue
+            elif file.endswith(".docx"):
+                try:
+                    print("indexing " + file)
+                    file_content = getTextFromWord(file)
+                except Exception as exc:
+                    print(f"Error processing Word file {file}: {str(exc)}")
+                    continue
+            elif file.endswith(".pptx"):
+                try:
+                    print("indexing " + file)
+                    file_content = getTextFromPPTX(file)
+                except Exception as exc:
+                    print(f"Error processing PowerPoint file {file}: {str(exc)}")
+                    continue
+            else:
+                print(f"Skipping unsupported file type: {file}")
+                continue
+
+            if not file_content.strip():
+                print(f"Warning: No content extracted from {file}")
+                continue
+
+            text_splitter = TokenTextSplitter(chunk_size=500, chunk_overlap=50)
+            texts = text_splitter.split_text(file_content)
+            if not texts:
+                print(f"Warning: No text chunks created for {file}")
+                continue
+
+            metadata = []
+            for i in range(0,len(texts)):
+                metadata.append({"path":file})
+            qdrant.add_texts(texts,metadatas=metadata)
+            print(f"Successfully indexed {file} with {len(texts)} chunks")
+        except Exception as e:
+            print(f"Error processing file {file}: {str(e)}")
             continue
-        text_splitter = TokenTextSplitter(chunk_size=500, chunk_overlap=50)
-        texts = text_splitter.split_text(file_content)
-        metadata = []
-        for i in range(0,len(texts)):
-            metadata.append({"path":file})
-        qdrant.add_texts(texts,metadatas=metadata)
-        len(texts)
-    print(onlyfiles)
+
     print("Finished indexing!")
 
 if __name__ == "__main__":

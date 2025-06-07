@@ -1,20 +1,37 @@
-torch~=2.2.0.dev20230922
-transformers~=4.36.0.dev0
-langchain
-langgraph
-qdrant-client
-PyPDF2
-tiktoken
-langchain-text-splitters
-langchain_community
-sentence_transformers
-langchain-qdrant
-fastapi~=0.111.0
-gradio_client==0.5.0
-pydantic==1.10.11
-uvicorn
-accelerate
-streamlit
-python-docx
-python-pptx
-openai
+# 基础依赖
+numpy>=1.26.0
+pydantic>=2.7.4
+fastapi>=0.110.0
+uvicorn>=0.27.1
+python-multipart>=0.0.9
+requests>=2.31.0
+tqdm>=4.66.0
+httpx[socks]>=0.27.0
+
+# LangChain 相关
+langchain>=0.1.0
+langchain-community>=0.0.10
+langchain-core>=0.1.0
+langchain-huggingface>=0.0.10
+
+# 向量数据库
+qdrant-client>=1.7.0
+
+# 模型相关
+transformers>=4.38.2
+torch>=2.2.0
+sentence-transformers>=2.5.1
+accelerate>=0.27.0
+bitsandbytes>=0.42.0
+huggingface-hub>=0.20.0
+
+# 本地模型支持
+llama-cpp-python>=0.2.0
+
+# 文档处理
+python-docx>=1.1.0
+python-pptx>=0.6.23
+PyPDF2>=3.0.0
+
+# Web 界面
+streamlit>=1.32.0
