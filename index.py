@@ -12,7 +12,10 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 import docx
 import os
-from environment_var import qdrant_url, qdrant_api_key, model_name, collection_name
+from config import (
+    QDRANT_URL, QDRANT_API_KEY, EMBEDDING_MODEL, COLLECTION_NAME,
+    CHUNK_SIZE, CHUNK_OVERLAP
+)
 
 def get_files(dir):
     file_list = []
@@ -47,7 +50,7 @@ def getTextFromPPTX(filename):
     return '\n'.join(fullText)
 
 def main_indexing(mypath):
-    # 使用 environment_var.py 中定义的模型
+    # 使用 config.py 中定义的模型
     if torch.cuda.is_available():
         model_kwargs = {'device': 'cuda'}
     elif torch.backends.mps.is_available():
@@ -56,17 +59,17 @@ def main_indexing(mypath):
         model_kwargs = {'device': 'cpu'}
     encode_kwargs = {'normalize_embeddings': True}
     hf = HuggingFaceEmbeddings(
-        model_name=model_name,
+        model_name=EMBEDDING_MODEL,
         model_kwargs=model_kwargs,
         encode_kwargs=encode_kwargs
     )
-    client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
-    if client.collection_exists(collection_name):
-        client.delete_collection(collection_name)
+    client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+    if client.collection_exists(COLLECTION_NAME):
+        client.delete_collection(COLLECTION_NAME)
 
     # 使用 512 维向量，因为 bge-small-zh-v1.5 模型生成的是 512 维向量
-    client.create_collection(collection_name,vectors_config=VectorParams(size=512, distance=Distance.DOT))
-    qdrant = Qdrant(client, collection_name, hf)
+    client.create_collection(COLLECTION_NAME, vectors_config=VectorParams(size=512, distance=Distance.DOT))
+    qdrant = Qdrant(client, COLLECTION_NAME, hf)
     print("Indexing...")
     onlyfiles = get_files(mypath)
     for file in onlyfiles:
@@ -118,7 +121,7 @@ def main_indexing(mypath):
                 print(f"Warning: No content extracted from {file}")
                 continue
 
-            text_splitter = TokenTextSplitter(chunk_size=500, chunk_overlap=50)
+            text_splitter = TokenTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
             texts = text_splitter.split_text(file_content)
             if not texts:
                 print(f"Warning: No text chunks created for {file}")

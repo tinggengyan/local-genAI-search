@@ -33,15 +33,9 @@ You will need to install all the requirements:
 pip install -r requirements.txt
 ```
 
-You need to create a file called ``environment_var.py``, and put there
-your HuggingFace API key. The file should look like this:
-
-```python
-import os
-
-hf_token = "hf_you_api_key"
-nvidia_key = "nvapi-your_nvidia_nim_api_key"
-```
+You need to create a file called ``config.py``, and put there
+your HuggingFace API key. 
+You can copy ``config_example.py`` and modify it.
 
 API key for HuggingFace can be retrieved at ``https://huggingface.co/settings/tokens``.
 In order to run generative component, you need to request
@@ -58,7 +52,7 @@ python index.py path/to/folder
 ```
 As example, you can run it with TestFolder provided:
 ```commandline
-python index.py TestFolder
+python index.py ~/Document/studyfiles
 ```
 This will create a qdrant client index locally and index all the files
 in this folder and its subfolders with extensions ```.pdf```,```.txt```,```.docx```,```.pptx```
@@ -144,3 +138,11 @@ Also, you can check the following papers:
 ## Contributors
 
 * [Nikola Milosevic](https://github.com/nikolamilosevic86)
+
+
+
+# command
+1. docker run -p 6333:6333 qdrant/qdrant
+2. python index.py ~/Document/studyfiles
+3. python uvicorn_start.py
+4. streamlit run user_interface.py
